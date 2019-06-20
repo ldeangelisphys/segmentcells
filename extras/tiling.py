@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import sys, os, cv2
+import pandas as pd
 #%%
 
 
@@ -73,12 +74,35 @@ def define_tiles(L,Ltile,check_edges = True):
 
 
     
-def make_tiles(raw_fld,out_fld,edges):
+def make_tiles(raw_fld,out_fld,edges,have_labels = False, lab_fld = None):
+    
+
     
     raw_files = [f.split('01.t')[0] for f in os.listdir(raw_fld) if f.endswith('01.tif')]
     N_files = len(raw_files)
     N_tiles = len(edges)
-  
+ 
+    #############################################
+    if have_labels:
+        lab_files = [f for f in os.listdir(lab_fld + 'PixelLabelData') if f.endswith('.png')]
+        # Build a converter for the label names
+        img2lab = {}
+        
+        df = pd.read_csv(lab_folder + 'PixelLabelData/labelconversion.csv').dropna()
+        
+        for i in df.index:
+            labfname = df['PixelLabelData'][i].split('\\')[-1]
+            imgfname = df['Var1'][i].split('\\')[-1]
+            img2lab[imgfname.split('01_SB')[0]] = labfname
+        
+        out_fld_lab = out_fld + '_masks'
+        if not os.path.isdir(out_fld_lab):
+            os.makedirs(out_fld_lab)
+            
+        # To make sure I am only looking at files with labels in them
+        raw_files = [f for f in img2lab.keys()]
+    #############################################  
+    
     # Shape of the input figure
     ch_shp = (image_size,image_size)
     
@@ -98,6 +122,11 @@ def make_tiles(raw_fld,out_fld,edges):
         im_cont[i] = 0
     
         image = np.empty((ch_shp[0],ch_shp[1],3), dtype = 'uint16')
+
+        #############################################        
+        if have_labels:
+            label = cv2.imread(os.path.join(lab_fld + 'PixelLabelData', img2lab[ifile]), -1)      
+        #############################################
     
         # Read and incorporate the different layers of the input
         for c in col_in:
@@ -120,12 +149,25 @@ def make_tiles(raw_fld,out_fld,edges):
             if tile.any() > 0:
                     
                 # Both for the images
-                cv2.imwrite(os.path.join(out_fld, fout),
-                            image[e[0]:e[1],e[2]:e[3], :])
+                cv2.imwrite(os.path.join(out_fld, fout),tile)
+                
+                
+                #############################################        
+                if have_labels:
+                    lab_tile = label[e[0]:e[1],e[2]:e[3]] * 255 # Essential to save the mask in binary way
+                    
+                    if np.max(lab_tile) > 200:
+                        fout = ifile + '{:03d}_{:03d}_dense_mask.png'.format(cx,cy)
+                    else:
+                        fout = ifile + '{:03d}_{:03d}_dense_mask_[empty].png'.format(cx,cy)
+                        
+                    cv2.imwrite(os.path.join(out_fld_lab, fout), lab_tile)
+                ############################################# 
                 
             else:
                 null_tiles.append(fout)
                 im_cont[i] += 1./N_tiles
+                
 
         progress_bar(i+1,N_files)
         
@@ -147,7 +189,14 @@ if __name__ == '__main__':
 
 
     image_content = make_tiles(raw_fld,out_fld,tile_edges)
+    #%%
 
+    N_slice = 16
+    raw_fld = 'V:/Rodent/Rajeev/171103/3_02/Test_Brain1664_stack/rawData/Test_Brain1664_302_40x2z-{:04d}'.format(N_slice)
+    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice{}_tiled'.format(N_slice)
+    labels_folder = 'Z:/cFos-Labelling/Slice{}/'.format(N_slice)
+
+    image_content = make_tiles(raw_fld,out_fld,tile_edges,have_labels = True, lab_fld = labels_folder)
 
 #%%
 
