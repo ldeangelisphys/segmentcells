@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 from skimage.measure import label as make_label
 import numpy as np
+import pandas as pd
 #%%
 
 def show_window( event, img, lab, cells):
@@ -28,8 +29,6 @@ def find_closest( x0, y0, cells):
     
     
     d = (x0 - np.array(cells)[:,2])**2 + (y0 - np.array(cells)[:,1])**2
-    print(x0,y0)
-    print(cells)
     
         
     return np.argmin(d)
@@ -44,47 +43,44 @@ def on_button_release(event,img,lab,cells):
     show_window( event, img, lab, cells)
         
 
-def on_button_press( event, img,lab,cells):
+def on_button_press( event, img,lab,cells, last_cell):
     
     
     # With a left click, add a cell    
     if event.button == 1:
-
-        new_cell = [np.max(np.array(cells)[:,0])+1,
+        
+        new_cell = [last_cell[0] + 1,
                     event.ydata,
                     event.xdata,
-                    10]
+                    1]
     
         cells.append(new_cell)    
-        if event.button != 1:
-            print('ciao')
-        
+        last_cell[0] += 1
         
     # For a right click, remove the closest cell    
     if event.button == 3:
         # Decide which spot has to be removed
         idx = find_closest(event.xdata,event.ydata,cells)
-        cells.pop(idx)# = np.delete(cells,idx,axis=0)
-        
+        cells.pop(idx)# = np.delete(cells,idx,axis=0)        
     
     show_window( event, img, lab, cells)
 
-def on_key_press( event ):
+def on_key_press( event,status ):
 
-    if event.key == 'enter':
+    if event.key in worddict.keys():
         plt.close('all')
-    if event.key == 'escape':
-        plt.close('all')
-    if event.key == 'e':
-        plt.close('all')
-    if event.key == 'p':
-        plt.close('all')
-    print(event.key)    
+        
+    status.append(event.key)  
+    print('You marked this tile as {}.'.format(worddict[event.key]))
     
-    
-def plot_empty_vs_ml(img,lab,cells): 
+def plot_empty_vs_ml(img,lab,cells,status): 
 
-    #    batch_of_imgs = tf.keras.backend.get_session().run(next_element)[0]
+    try:
+        last_cell = [cells[-1][0]]
+    except:
+        last_cell = [-1]
+        
+#    batch_of_imgs = tf.keras.backend.get_session().run(next_element)[0]
 #    predicted_labels = model.predict(batch_of_imgs)
 #    labels = np.array([predicted_labels,predicted_labels])
 #    img,lab= batch_of_imgs[0],labels[:,0,:,:,0]
@@ -94,19 +90,16 @@ def plot_empty_vs_ml(img,lab,cells):
         plot_back_img(ax[nplot],img)
         
 
-    ax[nplot].contour(lab[nplot,:,:], levels = [0.5], colors = 'red', linestyles = ':')
-
-
-    plot_circles(ax[nplot],np.array(cells))
+    ax[1].contour(lab[:,:], levels = [0.5], colors = 'red', linestyles = ':')
+    plot_circles(ax[1],np.array(cells))
 #             ax[nplot].imshow(lab_img, cmap = 'hsv', alpha = 0.2)
 
     ax[1].set_title('ML Segmentation')
     
-    
     # Why the lambda?? can I just put on_button_press? TODO
-    fig.canvas.mpl_connect( 'button_press_event', lambda event: on_button_press( event, img,lab, cells) )
+    fig.canvas.mpl_connect( 'button_press_event', lambda event: on_button_press( event, img,lab, cells , last_cell) )
     fig.canvas.mpl_connect( 'button_release_event', lambda event: on_button_release( event, img,lab, cells) )
-    fig.canvas.mpl_connect( 'key_press_event', lambda event : on_key_press( event ) )
+    fig.canvas.mpl_connect( 'key_press_event', lambda event : on_key_press( event,status ) )
 
     fig.suptitle("Examples of Input Image, Label, and Prediction")
     plt.show()
@@ -158,7 +151,7 @@ def get_baseline_dataset(filenames,
                          shuffle=True):           
   num_x = len(filenames)
   # Create a dataset from the filenames and labels
-  dataset = tf.data.Dataset.from_tensor_slices(filenames)
+  dataset = tf.data.Dataset.from_tensor_slices((filenames,filenames))
   # Map our preprocessing function to every element in our dataset, taking
   # advantage of multithreading
   dataset = dataset.map(_process_pathnames, num_parallel_calls=threads)
@@ -175,14 +168,14 @@ def get_baseline_dataset(filenames,
   dataset = dataset.repeat().batch(batch_size)
   return dataset
 
-def _process_pathnames(fname):
+def _process_pathnames(fname,fileid):
     # We map this function onto each pathname pair  
     img_str = tf.read_file(fname)
     img = tf.image.decode_png(img_str, channels = 3, dtype = tf.dtypes.uint16)
     
-    return img
+    return (img,fileid)
 
-def _augment(img,
+def _augment(img,fileid,
              resize=None,  # Resize the image to some size e.g. [256, 256]
              scale=1,  # Scale image e.g. 1 / 255.
              hue_delta=0,  # Adjust the hue of an RGB image by random factor
@@ -201,7 +194,7 @@ def _augment(img,
 #  img, label_img = shift_img(img, label_img, width_shift_range, height_shift_range)
 #  label_img = tf.to_float(label_img) * scale
   img = tf.to_float(img) * scale 
-  return img,
+  return (img,fileid)
 
 
 def name_cells(label):
@@ -223,6 +216,17 @@ def name_cells(label):
     return cells
 
 
+def decodename(name):
+    
+    return name.decode('utf-8').split('\\')[-1]
+
+def process_cells(c):
+    
+    if len(c) == 0:
+        c.append([-1,np.nan,np.nan,np.nan])
+    
+    return c
+    
 #%%
 if __name__ == '__main__':
     model_path = 'U:/segmentation/brain/models/fulltrain_densetile_{}epochs.hdf5'.format(100)
@@ -231,11 +235,19 @@ if __name__ == '__main__':
     model = models.load_model(model_path, custom_objects={'bce_dice_loss': bce_dice_loss,
                                                                'dice_loss': dice_loss})
         
+    worddict = {'p':'perfect',
+                'space':'perfect',
+                'esape':'empty',
+                'e':'empty',
+                's':'bad for training',
+                'b':'bad for training',
+                'enter':'modified',
+                'o':'other'}
     #%% 
     N_slice = 14
     img_dir = 'U:/PROJECTS/cell_segmentation/datasets/slice{}_tiled'.format(N_slice)
     fnames = [f for f in os.listdir(img_dir) if f.endswith('dense.png')]
-    val_filenames = [os.path.join(img_dir, f) for f in fnames]
+    val_filenames = [os.path.join(img_dir, f) for f in fnames][:30]
     batch_size = 3
     #%%
     img_shape = [256,256]
@@ -267,24 +279,32 @@ if __name__ == '__main__':
     pred_dir = img_dir + '_prediction'
     if not os.path.isdir(pred_dir):
         os.makedirs(pred_dir)
-    
+        
+    df = pd.DataFrame()
     
     # Running next element in our graph will produce a batch of images
     N_batchs = 1
     for i in range(1):
-        batch_of_imgs = tf.keras.backend.get_session().run(next_element)[0]
+        batch_of_imgs,batch_of_fnames = tf.keras.backend.get_session().run(next_element)
         predicted_labels = model.predict(batch_of_imgs)
-    #    
-        labels = np.array([predicted_labels,predicted_labels])
     
-        for l in range(1):
+        for l in range(batch_size):
     
             # initialize empty list for cells
-            cells = name_cells(labels[1,l,:,:,0])
+            cells = name_cells(predicted_labels[l,:,:,0])
+            status = []
             
+            plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status)
+            #%% 
             
-    #         plot_man_vs_ml(batch_of_imgs[l],labels[:,l,:,:,0],feat = False)
-    #         plot_man_vs_ml(batch_of_imgs[l],labels[:,l,:,:,0], raw = False)
-            plot_empty_vs_ml(batch_of_imgs[l],labels[:,l,:,:,0],cells)
-    
-    
+            this_df = (pd
+                       .DataFrame(process_cells(cells), columns = ['index','x','y','r'])
+                       .assign(filename=decodename(batch_of_fnames[l]))
+                       .assign(slice_number=N_slice)
+                       .assign(exit_status=status[0])
+                       )
+            this_df.to_csv('U:/PROJECTS/cell_segmentation/review/ttt_{:05d}.csv'.format(l + i*batch_size), sep = ';', decimal = ',') 
+            
+            df = df.append(this_df, ignore_index = True)
+            
+            df.to_csv('U:/PROJECTS/cell_segmentation/review/ttt.csv', sep = ';', decimal = ',') 
