@@ -193,7 +193,7 @@ def _augment(img,fileid,
 #  img, label_img = flip_img(horizontal_flip, img, label_img)
 #  img, label_img = shift_img(img, label_img, width_shift_range, height_shift_range)
 #  label_img = tf.to_float(label_img) * scale
-  img = tf.to_float(img) * scale 
+  img = tf.cast(img, tf.float32) * scale 
   return (img,fileid)
 
 
@@ -236,7 +236,7 @@ if __name__ == '__main__':
                                                                'dice_loss': dice_loss})
         
     worddict = {'p':'perfect',
-                'space':'perfect',
+                ' ':'perfect',
                 'esape':'empty',
                 'e':'empty',
                 's':'bad for training',
@@ -284,7 +284,7 @@ if __name__ == '__main__':
     
     # Running next element in our graph will produce a batch of images
     N_batchs = 1
-    for i in range(1):
+    for i in range(3):
         batch_of_imgs,batch_of_fnames = tf.keras.backend.get_session().run(next_element)
         predicted_labels = model.predict(batch_of_imgs)
     
