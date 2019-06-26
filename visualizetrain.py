@@ -65,15 +65,15 @@ def on_button_press( event, img,lab,cells, last_cell):
     
     show_window( event, img, lab, cells)
 
-def on_key_press( event,status ):
+def on_key_press( event, status, fnm):
 
     if event.key in worddict.keys():
         plt.close('all')
         
     status.append(event.key)  
-    print('You marked this tile as {}.'.format(worddict[event.key]))
+    print('File {} marked this tile as {}.'.format(fnm,worddict[event.key]))
     
-def plot_empty_vs_ml(img,lab,cells,status): 
+def plot_empty_vs_ml(img,lab,cells,status,fnm): 
 
     try:
         last_cell = [cells[-1][0]]
@@ -99,16 +99,16 @@ def plot_empty_vs_ml(img,lab,cells,status):
     # Why the lambda?? can I just put on_button_press? TODO
     fig.canvas.mpl_connect( 'button_press_event', lambda event: on_button_press( event, img,lab, cells , last_cell) )
     fig.canvas.mpl_connect( 'button_release_event', lambda event: on_button_release( event, img,lab, cells) )
-    fig.canvas.mpl_connect( 'key_press_event', lambda event : on_key_press( event,status ) )
+    fig.canvas.mpl_connect( 'key_press_event', lambda event : on_key_press( event,status,fnm ) )
 
-    fig.suptitle("Examples of Input Image, Label, and Prediction")
+    fig.suptitle('Segmentation of {}'.format(fnm))
     plt.show()
 
     return cells
 
 def plot_back_img(ax,img):
 
-    ax.imshow(img[:,:,1]-img[:,:,0], vmax=10, cmap = 'Greys_r', origin = 'lower')
+    ax.imshow(img[:,:,1]-img[:,:,0], vmin =0, vmax=10, cmap = 'Greys_r', origin = 'lower')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title('Corrected Segmentation')              
@@ -229,7 +229,9 @@ def process_cells(c):
     
 #%%
 if __name__ == '__main__':
-    model_path = 'U:/segmentation/brain/models/fulltrain_densetile_{}epochs.hdf5'.format(100)
+    model_path = '//vs01/SBL_DATA/lorenzo/segmentation/brain/models/fulltrain_densetile_{}epochs.hdf5'.format(100)
+    rev_path = '//vs01/SBL_DATA/lorenzo/PROJECTS/cell_segmentation/review/'
+    
     
     # Alternatively, load the weights directly: model.load_weights(save_model_path)
     model = models.load_model(model_path, custom_objects={'bce_dice_loss': bce_dice_loss,
@@ -239,17 +241,40 @@ if __name__ == '__main__':
                 ' ':'perfect',
                 'esape':'empty',
                 'e':'empty',
-                's':'bad for training',
                 'b':'bad for training',
                 'enter':'modified',
-                'o':'other'}
+                'o':'other',
+                'q':'quit'}
+    #%%%
+    
+    user = input("Please enter your username: ")
+    
+    
+    
     #%% 
     N_slice = 14
-    img_dir = 'U:/PROJECTS/cell_segmentation/datasets/slice{}_tiled'.format(N_slice)
-    fnames = [f for f in os.listdir(img_dir) if f.endswith('dense.png')]
-    val_filenames = [os.path.join(img_dir, f) for f in fnames][:30]
+    img_dir = '//vs01/SBL_DATA/lorenzo/PROJECTS/cell_segmentation/datasets/slice_{:04d}_tiled'.format(N_slice)
+    rev_path_sl = rev_path + 'slice_{:04d}/'.format(N_slice)
+    if not os.path.isdir(rev_path_sl):
+        os.makedirs(rev_path_sl)
+    
+    rev_csv = rev_path + 'slice_{:04d}.csv'.format(N_slice)
+    
+    try:
+        df = pd.read_csv(rev_csv, sep = ';', decimal = ',')
+        processed_filenames = df['filename'].values
+        print('Reading processed images from {}...'.format(rev_csv))
+    except:
+        df = pd.DataFrame()
+        processed_filenames = []
+        
+    #%%     
+    
+        
+    fnames = [f for f in os.listdir(img_dir) if f.endswith('dense.png') and f not in processed_filenames]
+    val_filenames = [os.path.join(img_dir, f) for f in fnames]
     batch_size = 3
-    #%%
+
     img_shape = [256,256]
     
     val_cfg = {
@@ -258,14 +283,15 @@ if __name__ == '__main__':
     }
     val_preprocessing_fn = functools.partial(_augment, **val_cfg)    
         
+    N_files = len(val_filenames)    
+    print('Loading a dataset of {} files...'.format(N_files))
+    
+    #%%
     val_ds = get_baseline_dataset(val_filenames, 
                                    preproc_fn=val_preprocessing_fn,
                                    batch_size=batch_size,
-                                   shuffle=True)    
-    
-    
-    
-       
+                                   shuffle=False)    
+
         
     # Let's visualize some of the outputs 
     data_aug_iter = val_ds.make_one_shot_iterator()
@@ -279,12 +305,10 @@ if __name__ == '__main__':
     pred_dir = img_dir + '_prediction'
     if not os.path.isdir(pred_dir):
         os.makedirs(pred_dir)
-        
-    df = pd.DataFrame()
-    
+            
     # Running next element in our graph will produce a batch of images
-    N_batchs = 1
-    for i in range(3):
+    N_batchs = int(N_files/batch_size)
+    for i in range(N_batchs):
         batch_of_imgs,batch_of_fnames = tf.keras.backend.get_session().run(next_element)
         predicted_labels = model.predict(batch_of_imgs)
     
@@ -293,18 +317,33 @@ if __name__ == '__main__':
             # initialize empty list for cells
             cells = name_cells(predicted_labels[l,:,:,0])
             status = []
+            this_file = decodename(batch_of_fnames[l])
             
-            plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status)
+            plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status, this_file)
+            
+            if status[0] == 'q':
+                break
             #%% 
             
             this_df = (pd
                        .DataFrame(process_cells(cells), columns = ['index','x','y','r'])
-                       .assign(filename=decodename(batch_of_fnames[l]))
+                       .assign(filename=this_file)
                        .assign(slice_number=N_slice)
                        .assign(exit_status=status[0])
+                       .assign(user=user)
+                       .assign(date=pd.Timestamp.now())
                        )
-            this_df.to_csv('U:/PROJECTS/cell_segmentation/review/ttt_{:05d}.csv'.format(l + i*batch_size), sep = ';', decimal = ',') 
+            this_df.to_csv(os.path.join(rev_path_sl,this_file.replace('png','csv')),
+                                        sep = ';', decimal = ',', index = False) 
             
             df = df.append(this_df, ignore_index = True)
             
-            df.to_csv('U:/PROJECTS/cell_segmentation/review/ttt.csv', sep = ';', decimal = ',') 
+            df.to_csv(rev_csv, sep = ';', decimal = ',', index = False) 
+            
+            
+        if status[0] == 'q':
+            break
+    
+    print('Thanks for helping!')
+            
+            
