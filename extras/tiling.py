@@ -183,9 +183,9 @@ if __name__ == '__main__':
     
     tile_edges = define_tiles(image_size,tile_size)
 
-    N_slice = 14
+    N_slice = 31
     raw_fld = 'V:/Rodent/Rajeev/171103/3_02/Test_Brain1664_stack/rawData/Test_Brain1664_302_40x2z-{:04d}'.format(N_slice)
-    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice{}_tiled'.format(N_slice)
+    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice_{:04}_tiled'.format(N_slice)
 
 
     image_content = make_tiles(raw_fld,out_fld,tile_edges)
@@ -193,7 +193,7 @@ if __name__ == '__main__':
 
     N_slice = 16
     raw_fld = 'V:/Rodent/Rajeev/171103/3_02/Test_Brain1664_stack/rawData/Test_Brain1664_302_40x2z-{:04d}'.format(N_slice)
-    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice{}_tiled'.format(N_slice)
+    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice_{:04}_tiled'.format(N_slice)
     labels_folder = 'Z:/cFos-Labelling/Slice{}/'.format(N_slice)
 
     image_content = make_tiles(raw_fld,out_fld,tile_edges,have_labels = True, lab_fld = labels_folder)
