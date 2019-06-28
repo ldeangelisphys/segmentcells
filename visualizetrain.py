@@ -252,13 +252,13 @@ if __name__ == '__main__':
     
     
     #%% 
-    N_slice = 14
+    N_slice = 31
     img_dir = '//vs01/SBL_DATA/lorenzo/PROJECTS/cell_segmentation/datasets/slice_{:04d}_tiled'.format(N_slice)
-    rev_path_sl = rev_path + 'slice_{:04d}/'.format(N_slice)
+    rev_path_sl = rev_path + 'slice_{:04d}_autoe/'.format(N_slice)
     if not os.path.isdir(rev_path_sl):
         os.makedirs(rev_path_sl)
     
-    rev_csv = rev_path + 'slice_{:04d}.csv'.format(N_slice)
+    rev_csv = rev_path + 'slice_{:04d}_autoe.csv'.format(N_slice)
     
     try:
         df = pd.read_csv(rev_csv, sep = ';', decimal = ',')
@@ -316,15 +316,23 @@ if __name__ == '__main__':
     
             # initialize empty list for cells
             cells = name_cells(predicted_labels[l,:,:,0])
-            status = []
+
             this_file = decodename(batch_of_fnames[l])
-            
-            plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status, this_file)
-            
-            if status[0] == 'q':
-                break
-            #%% 
-            
+
+            status = []
+
+            # Go and check only if there are cells            
+            if len(cells) > 0:
+                                
+                plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status, this_file)
+                
+                if status[0] == 'q':
+                    break
+                #%
+            else:
+                status.append('e')
+
+
             this_df = (pd
                        .DataFrame(process_cells(cells), columns = ['index','x','y','r'])
                        .assign(filename=this_file)
@@ -338,9 +346,8 @@ if __name__ == '__main__':
             
             df = df.append(this_df, ignore_index = True)
             
-            df.to_csv(rev_csv, sep = ';', decimal = ',', index = False) 
-            
-            
+            df.to_csv(rev_csv, sep = ';', decimal = ',', index = False)                 
+        
         if status[0] == 'q':
             break
     
