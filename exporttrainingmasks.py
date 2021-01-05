@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from skimage.measure import label as make_label
 import numpy as np
 import pandas as pd
+import cv2
 #%%
 
 def show_window( event, img, lab, cells):
@@ -73,38 +74,31 @@ def on_key_press( event, status, fnm):
     status.append(event.key)  
     print('File {} marked this tile as {}.'.format(fnm,worddict[event.key]))
     
-def plot_empty_vs_ml(img,lab,cells,status,fnm): 
+def plot_empty_vs_ml(img,oldlab,newlab,cells,cleancells,fnm): 
 
     try:
         last_cell = [cells[-1][0]]
     except:
         last_cell = [-1]
         
-#    batch_of_imgs = tf.keras.backend.get_session().run(next_element)[0]
-#    predicted_labels = model.predict(batch_of_imgs)
-#    labels = np.array([predicted_labels,predicted_labels])
-#    img,lab= batch_of_imgs[0],labels[:,0,:,:,0]
     fig,ax = plt.subplots(ncols=2,figsize=(20, 10), sharex =True, sharey= True)
 
     for nplot in range(2):
         plot_back_img(ax[nplot],img)
         
-
-    ax[1].contour(lab[:,:], levels = [0.5], colors = 'red', linestyles = ':')
-    plot_circles(ax[1],np.array(cells))
-#             ax[nplot].imshow(lab_img, cmap = 'hsv', alpha = 0.2)
+    for nj,tlab in enumerate([oldlab,newlab]):
+        ax[nj].contour(tlab[:,:], levels = [0.5], colors = 'red', linestyles = ':')
+    for nj,tcells in enumerate([cells,cleancells]):
+        plot_circles(ax[nj],np.array(tcells))
+    #             ax[nplot].imshow(lab_img, cmap = 'hsv', alpha = 0.2)
 
     ax[1].set_title('ML Segmentation')
     
-    # Why the lambda?? can I just put on_button_press? TODO
-    fig.canvas.mpl_connect( 'button_press_event', lambda event: on_button_press( event, img,lab, cells , last_cell) )
-    fig.canvas.mpl_connect( 'button_release_event', lambda event: on_button_release( event, img,lab, cells) )
-    fig.canvas.mpl_connect( 'key_press_event', lambda event : on_key_press( event,status,fnm ) )
-
     fig.suptitle('Segmentation of {}'.format(fnm))
-    plt.show()
+    plt.savefig(rev_path_ov + fnm)
+    plt.close('all')
 
-    return cells
+    return
 
 def plot_back_img(ax,img):
 
@@ -170,7 +164,7 @@ def get_baseline_dataset(filenames,
 
 def _process_pathnames(fname,fileid):
     # We map this function onto each pathname pair  
-    img_str = tf.io.read_file(fname)
+    img_str = tf.read_file(fname)
     img = tf.image.decode_png(img_str, channels = 3, dtype = tf.dtypes.uint16)
     
     return (img,fileid)
@@ -185,7 +179,7 @@ def _augment(img,fileid,
   if resize is not None:
     # Resize both images
 #    label_img = tf.image.resize_images(label_img, resize)
-    img = tf.image.resize(img, resize)
+    img = tf.image.resize_images(img, resize)
   
   if hue_delta:
     img = tf.image.random_hue(img, hue_delta)
@@ -197,28 +191,49 @@ def _augment(img,fileid,
   return (img,fileid)
 
 
-def name_cells(label):
-    
+def name_cells(label, deleted_labs = [], cleanlabel = False):
+    #
+    deleted_cells = []
     lab_img = make_label(label > vmin)
     cell_names = np.unique(lab_img)
     cell_names = cell_names[cell_names > 0] 
     cells = []
+    cells_clean = []
     cell_lab = 0           
     for ncell in cell_names:
         locs = np.where(lab_img == ncell)
         xctr,yctr = np.average(np.array(locs),axis = 1)
         xstd,ystd = np.std(np.array(locs),axis = 1)
         r = np.sqrt(xstd**2 + ystd**2)
+          
+        
         if r > rmin:
             cells.append([cell_lab,xctr,yctr,r])
+
+            if cell_lab in deleted_labs:
+                deleted_cells.append(ncell)   
+            else:
+                cells_clean.append(cells[-1])
+        
             cell_lab +=1
-    
-    return cells
+        
+        
+        else:
+            deleted_cells.append(ncell)
+            
+            
+                        
+    if cleanlabel:
+        for ncell in deleted_cells:
+            lab_img[lab_img == ncell] = 0
+            
+            
+    return cells, 1.0*(lab_img > vmin), cells_clean
 
 
 def decodename(name):
     
-    return name.numpy().decode('utf-8').split('\\')[-1]
+    return name.decode('utf-8').split('\\')[-1]
 
 def process_cells(c):
     
@@ -230,125 +245,112 @@ def process_cells(c):
 #%%
 if __name__ == '__main__':
     
-    dataset = '2019_11_25'
-
-    model_path = '/data01/lorenzo/PROJECTS/cell_segmentation/models/train_wnewdata_{}epochs.hdf5'.format(99)
-    rev_path = '/data01/lorenzo/PROJECTS/cell_segmentation/review/{}/'.format(dataset)
+    
+    model_path = '//vs01/SBL_DATA/lorenzo/segmentation/brain/models/fulltrain_densetile_{}epochs.hdf5'.format(100)
+    rev_path = '//vs01/SBL_DATA/lorenzo/PROJECTS/cell_segmentation/review/'
     
     
     # Alternatively, load the weights directly: model.load_weights(save_model_path)
     model = models.load_model(model_path, custom_objects={'bce_dice_loss': bce_dice_loss,
                                                                'dice_loss': dice_loss})
-        
-    worddict = {'p':'perfect',
-                ' ':'perfect',
-                'esape':'empty',
-                'e':'empty',
-                'b':'bad for training',
-                'enter':'modified',
-                'o':'other',
-                'q':'quit'}
-    #%%%
-    
-    user = input("Please enter your username: ")
-    
-    
-    
-    #%% 
-    N_slice = 51
-    img_dir = '/data01/lorenzo/PROJECTS/cell_segmentation/datasets/{}/tiled_slices/slice_{:04d}_tiled'.format(dataset,N_slice)
-    rev_path_sl = rev_path + 'slice_{:04d}_MLpred/'.format(N_slice)
-    if not os.path.isdir(rev_path_sl):
-        os.makedirs(rev_path_sl)
-    
-    rev_csv = rev_path + 'slice_{:04d}_autoe.csv'.format(N_slice)
-    
-    try:
-        df = pd.read_csv(rev_csv, sep = ';', decimal = ',')
-        processed_filenames = df['filename'].values
-        print('Reading processed images from {}...'.format(rev_csv))
-    except:
-        df = pd.DataFrame()
-        processed_filenames = []
-        
-    #%%     
-    
-        
-    fnames = [f for f in os.listdir(img_dir) if f.endswith('overlap.png') and f not in processed_filenames]
-    val_filenames = [os.path.join(img_dir, f) for f in fnames]
-    batch_size = 3
-
-    img_shape = [256,256]
-    
-    val_cfg = {
-        'resize': [img_shape[0], img_shape[1]],
-        'scale': 1 / 255. ,
-    }
-    val_preprocessing_fn = functools.partial(_augment, **val_cfg)    
-        
-    N_files = len(val_filenames)    
-    print('Loading a dataset of {} files...'.format(N_files))
     
     #%%
-    val_ds = get_baseline_dataset(val_filenames, 
-                                   preproc_fn=val_preprocessing_fn,
-                                   batch_size=batch_size,
-                                   shuffle=False)    
-
-
-    rmin = 2
-    vmin = 0.8
     
-    pred_dir = img_dir + '_prediction'
-    if not os.path.isdir(pred_dir):
-        os.makedirs(pred_dir)
-            
-    # Running next element in our graph will produce a batch of images
-    N_batchs = int(N_files/batch_size)
-    for next_element in val_ds:
-
-        batch_of_imgs,batch_of_fnames = next_element
-        predicted_labels = model.predict(batch_of_imgs)
+    ov_df = pd.read_csv(rev_path + 'slices_14-31_2019-07-08.csv', sep = ';', decimal = ',', index_col = 0)
+    #%%
+    perf_df = ov_df.loc[ov_df.perf]
+    #%%    
+    noadd_df = ov_df.loc[np.invert(ov_df.perf) * ov_df.noadd]
     
-        for l in range(batch_size):
+    #%%%
+    user = 'rev_ML'
     
-            # initialize empty list for cells
-            cells = name_cells(predicted_labels[l,:,:,0])
+    slicenumbers = pd.unique(ov_df.slice)   
 
-            this_file = decodename(batch_of_fnames[l])
-
-            status = []
-
-            # Go and check only if there are cells            
-            if len(cells) > 0:
-                                
-                plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status, this_file)
-                
-                if status[0] == 'q':
-                    break
-                #%
-            else:
-                status.append('e')
-
-
-            this_df = (pd
-                       .DataFrame(process_cells(cells), columns = ['index','x','y','r'])
-                       .assign(filename=this_file)
-                       .assign(slice_number=N_slice)
-                       .assign(exit_status=status[0])
-                       .assign(user=user)
-                       .assign(date=pd.Timestamp.now())
-                       )
-            this_df.to_csv(os.path.join(rev_path_sl,this_file.replace('png','csv')),
-                                        sep = ';', decimal = ',', index = False) 
-            
-            df = df.append(this_df, ignore_index = True)
-            
-            df.to_csv(rev_csv, sep = ';', decimal = ',', index = False)                 
+    for N_slice in slicenumbers:
         
-        if status[0] == 'q':
-            break
-    
-    print('Thanks for helping!')
+        #%
+        img_dir = '//vs01/SBL_DATA/lorenzo/PROJECTS/cell_segmentation/datasets/slice_{:04d}_tiled'.format(N_slice)
+        rev_path_tr = rev_path + 'slice_{:04d}_afterrev_train/'.format(N_slice)
+        if not os.path.isdir(rev_path_tr):
+            os.makedirs(rev_path_tr)
+        rev_path_ma = rev_path + 'slice_{:04d}_afterrev_train_masks/'.format(N_slice)
+        if not os.path.isdir(rev_path_ma):
+            os.makedirs(rev_path_ma)
+        rev_path_ov = rev_path + 'slice_{:04d}_afterrev_overview/'.format(N_slice)
+        if not os.path.isdir(rev_path_ov):
+            os.makedirs(rev_path_ov)
+        
+        #%     
+        perf_sl = perf_df.loc[perf_df.slice == N_slice]
+        noadd_sl = noadd_df.loc[noadd_df.slice == N_slice]
+        #%
+     
+        for df in [perf_sl]:
             
             
+            val_filenames = [os.path.join(img_dir, f) for f in df.filename]
+            batch_size = 3
+        
+            img_shape = [256,256]
+            
+            val_cfg = {
+                'resize': [img_shape[0], img_shape[1]],
+                'scale': 1 / 255. ,
+            }
+            val_preprocessing_fn = functools.partial(_augment, **val_cfg)    
+                
+            N_files = len(val_filenames)    
+            print('Loading a dataset of {} files...'.format(N_files))
+            
+            #%
+            val_ds = get_baseline_dataset(val_filenames, 
+                                           preproc_fn=val_preprocessing_fn,
+                                           batch_size=batch_size,
+                                           shuffle=False)    
+        
+                
+            # Let's visualize some of the outputs 
+            data_aug_iter = val_ds.make_one_shot_iterator()
+            next_element = data_aug_iter.get_next()
+                
+            #%
+            
+            rmin = 2
+            vmin = 0.5
+            
+            pred_dir = img_dir + '_prediction'
+            if not os.path.isdir(pred_dir):
+                os.makedirs(pred_dir)
+                    
+            # Running next element in our graph will produce a batch of images
+            N_batchs = int(N_files/batch_size)
+            for i in range(N_batchs):
+                batch_of_imgs,batch_of_fnames = tf.keras.backend.get_session().run(next_element)
+                predicted_labels = model.predict(batch_of_imgs)
+            
+                for l in range(batch_size):
+                    #
+        
+                    this_file = decodename(batch_of_fnames[l])
+        
+                    delcells = df.loc[df.filename == this_file].deleted.values[0][1:-1].split(',')
+                    try:
+                        delcells = [int(c) for c in delcells]
+                    except:
+                        delcells = []
+        
+                    cells,clean_label,clean_cells = name_cells(predicted_labels[l,:,:,0], deleted_labs = delcells, cleanlabel = True)
+        
+        #            status = []
+        #
+        #            # Go and check only if there are cells            
+        #            if len(cells) > 0:
+        #                                
+                    plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],clean_label,cells,clean_cells, this_file)
+        
+                    img_out = np.array(batch_of_imgs[l] * 255., dtype = np.uint16)
+                    cv2.imwrite(os.path.join(rev_path_tr, this_file), img_out)
+            
+                    lab_out = np.array( clean_label * 255., dtype = int)
+                    cv2.imwrite(os.path.join(rev_path_ma, this_file.replace('.png','_mask.png')),lab_out)  

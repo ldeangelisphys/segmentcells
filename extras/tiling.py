@@ -40,12 +40,12 @@ def define_tiles(L,Ltile,check_edges = True):
     
     for nx in range(ntiles):
         for ny in range(ntiles):
-            plt.fill_between([L-nx*Ltile,L-(nx+1)*Ltile],
-                             [L-(ny+1)*Ltile,L-(ny+1)*Ltile],
-                             [L-(ny)*Ltile,L-(ny)*Ltile], color = 'C8',
+            plt.fill_between([L-(nx+1)*Ltile,L-nx*Ltile],
+                             [L-(ny)*Ltile,L-(ny)*Ltile],
+                             [L-(ny+1)*Ltile,L-(ny+1)*Ltile], color = 'C8',
                               alpha = 0.3, linestyle = '-', linewidth = 2)
     
-            edges.append([L-nx*Ltile,L-(nx+1)*Ltile,L-ny*Ltile,L-(ny+1)*Ltile])
+            edges.append([L-(nx+1)*Ltile,L-nx*Ltile,L-(ny+1)*Ltile,L-ny*Ltile])
     
             
     plt.fill_between([L-Ltile,L],[Ltile,Ltile],[0,0], color = 'C2',
@@ -67,11 +67,9 @@ def define_tiles(L,Ltile,check_edges = True):
     plt.axis('off')
     plt.title('Original image ({}x{}) and its tiles ({}x{})'.format(L,L,Ltile,Ltile))
     
-    plt.savefig('U:/PROJECTS/cell_segmentation/tiling/procedure.png', dpi = 300)
-    plt.close('all')
+#    plt.savefig('U:/PROJECTS/cell_segmentation/tiling/procedure.png', dpi = 300)
+#    plt.close('all')
     return edges
-
-
 
     
 def make_tiles(raw_fld,out_fld,edges,have_labels = False, lab_fld = None):
@@ -118,9 +116,7 @@ def make_tiles(raw_fld,out_fld,edges,have_labels = False, lab_fld = None):
     null_tiles = []
     
     for i,ifile in enumerate(raw_files):
-        
-        im_cont[i] = 0
-    
+            
         image = np.empty((ch_shp[0],ch_shp[1],3), dtype = 'uint16')
 
         #############################################        
@@ -166,12 +162,11 @@ def make_tiles(raw_fld,out_fld,edges,have_labels = False, lab_fld = None):
                 
             else:
                 null_tiles.append(fout)
-                im_cont[i] += 1./N_tiles
                 
 
         progress_bar(i+1,N_files)
         
-    return image_content
+    return 
 
 #%%
 
@@ -183,21 +178,23 @@ if __name__ == '__main__':
     
     tile_edges = define_tiles(image_size,tile_size)
 
-    N_slice = 31
-    raw_fld = 'V:/Rodent/Rajeev/171103/3_02/Test_Brain1664_stack/rawData/Test_Brain1664_302_40x2z-{:04d}'.format(N_slice)
-    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice_{:04}_tiled'.format(N_slice)
+    dataset = '2019_11_25'
 
+    N_slice = 17
+    raw_fld = '/data02/Rodent/Rajeev/171103/Data/Group2/171103_02_05/Twophoton/{}/rawData/New_Demo_2_05-{:04d}'.format(dataset,N_slice)
+    out_fld = '/data01/lorenzo/PROJECTS/cell_segmentation/datasets/{}/slice_{:04}_tiled'.format(dataset,N_slice)
+    #
 
     image_content = make_tiles(raw_fld,out_fld,tile_edges)
     #%%
-
-    N_slice = 16
-    raw_fld = 'V:/Rodent/Rajeev/171103/3_02/Test_Brain1664_stack/rawData/Test_Brain1664_302_40x2z-{:04d}'.format(N_slice)
-    out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice_{:04}_tiled'.format(N_slice)
-    labels_folder = 'Z:/cFos-Labelling/Slice{}/'.format(N_slice)
-
-    image_content = make_tiles(raw_fld,out_fld,tile_edges,have_labels = True, lab_fld = labels_folder)
-
-#%%
-
-
+#
+#     N_slice = 16
+#     raw_fld = 'V:/Rodent/Rajeev/171103/3_02/Test_Brain1664_stack/rawData/Test_Brain1664_302_40x2z-{:04d}'.format(N_slice)
+#     out_fld = 'U:/PROJECTS/cell_segmentation/datasets/slice_{:04}_tiled'.format(N_slice)
+#     labels_folder = 'Z:/cFos-Labelling/Slice{}/'.format(N_slice)
+#
+#     image_content = make_tiles(raw_fld,out_fld,tile_edges,have_labels = True, lab_fld = labels_folder)
+#
+# #%%
+#
+#
