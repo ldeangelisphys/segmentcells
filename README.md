@@ -1,6 +1,6 @@
 # C-FOS Cell Segmentation with Deep Learning
 
-![Cells count](https://github.com/ldeangelisphys/segmentcells/blob/master/examples/out.gif){:height="512"}
+![Cells count](https://github.com/ldeangelisphys/segmentcells/blob/master/examples/out.gif)
 
 ## Visualize the training
 
@@ -17,6 +17,8 @@ is the result of the neural network model that performed the segmentation
 on the image. Additionally, there are yellow circles with numbers (labels).
 These are the cells that survived the criterion for minimum size and brightness
 that are actually going to be labeled and stored.
+
+![Visualize training](https://github.com/ldeangelisphys/segmentcells/blob/master/examples/vistrain.png)
 
 With this software you can review whether these cells are correctly identified
 or not. To remove a cell right-click near its center. To add a cell, left-click
