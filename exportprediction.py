@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 from skimage.measure import label as make_label
 import numpy as np
 import pandas as pd
+from skimage.measure import regionprops
+import cv2
+from extras.cells_postprocessing import *
 #%%
 
 def show_window( event, img, lab, cells):
@@ -200,6 +203,7 @@ def _augment(img,fileid,
 def name_cells(label):
     
     lab_img = make_label(label > vmin)
+    Lprop = regionprops(lab_img)
     cell_names = np.unique(lab_img)
     cell_names = cell_names[cell_names > 0] 
     cells = []
@@ -209,8 +213,9 @@ def name_cells(label):
         xctr,yctr = np.average(np.array(locs),axis = 1)
         xstd,ystd = np.std(np.array(locs),axis = 1)
         r = np.sqrt(xstd**2 + ystd**2)
+        ecc = Lprop[ncell-1].eccentricity
         if r > rmin:
-            cells.append([cell_lab,xctr,yctr,r])
+            cells.append([cell_lab,xctr,yctr,r,ecc])
             cell_lab +=1
     
     return cells
@@ -218,24 +223,23 @@ def name_cells(label):
 
 def decodename(name):
     
-    return name.numpy().decode('utf-8').split('\\')[-1]
+    return name.numpy().decode('utf-8').split('/')[-1]
 
 def process_cells(c):
     
     if len(c) == 0:
-        c.append([-1,np.nan,np.nan,np.nan])
+        c.append([-1,np.nan,np.nan,np.nan,np.nan,np.nan])
     
     return c
     
 #%%
 if __name__ == '__main__':
-    
-    dataset = '2019_11_25'
 
+    dataset = '2019_11_25'
+    # dataset = '2019_02_20'
     model_path = '/data01/lorenzo/PROJECTS/cell_segmentation/models/train_wnewdata_{}epochs.hdf5'.format(99)
     rev_path = '/data01/lorenzo/PROJECTS/cell_segmentation/review/{}/'.format(dataset)
-    
-    
+
     # Alternatively, load the weights directly: model.load_weights(save_model_path)
     model = models.load_model(model_path, custom_objects={'bce_dice_loss': bce_dice_loss,
                                                                'dice_loss': dice_loss})
@@ -250,105 +254,131 @@ if __name__ == '__main__':
                 'q':'quit'}
     #%%%
     
-    user = input("Please enter your username: ")
+    user = 'ML'
+    export_masks = False
     
-    
-    
-    #%% 
-    N_slice = 51
-    img_dir = '/data01/lorenzo/PROJECTS/cell_segmentation/datasets/{}/tiled_slices/slice_{:04d}_tiled'.format(dataset,N_slice)
-    rev_path_sl = rev_path + 'slice_{:04d}_MLpred/'.format(N_slice)
-    if not os.path.isdir(rev_path_sl):
-        os.makedirs(rev_path_sl)
-    
-    rev_csv = rev_path + 'slice_{:04d}_autoe.csv'.format(N_slice)
-    
-    try:
-        df = pd.read_csv(rev_csv, sep = ';', decimal = ',')
-        processed_filenames = df['filename'].values
-        print('Reading processed images from {}...'.format(rev_csv))
-    except:
-        df = pd.DataFrame()
-        processed_filenames = []
-        
-    #%%     
-    
-        
-    fnames = [f for f in os.listdir(img_dir) if f.endswith('overlap.png') and f not in processed_filenames]
-    val_filenames = [os.path.join(img_dir, f) for f in fnames]
-    batch_size = 3
 
-    img_shape = [256,256]
     
-    val_cfg = {
-        'resize': [img_shape[0], img_shape[1]],
-        'scale': 1 / 255. ,
-    }
-    val_preprocessing_fn = functools.partial(_augment, **val_cfg)    
-        
-    N_files = len(val_filenames)    
-    print('Loading a dataset of {} files...'.format(N_files))
     
     #%%
-    val_ds = get_baseline_dataset(val_filenames, 
-                                   preproc_fn=val_preprocessing_fn,
-                                   batch_size=batch_size,
-                                   shuffle=False)    
+    # slices = np.arange(39,54)
+    slices = [34,35,33] #np.arange(33,36)
+    for N_slice in slices:
+        img_dir = '/data01/lorenzo/PROJECTS/cell_segmentation/datasets/{}/tiled_slices/slice_{:04d}_tiled/'.format(dataset,N_slice)
+        rev_path_sl = rev_path + 'MLpred/slice_{:04d}/'.format(N_slice)
+        if not os.path.isdir(rev_path_sl):
+            os.makedirs(rev_path_sl)
+
+        rev_csv = rev_path + 'MLpred/slice_{:04d}.csv'.format(N_slice)
+
+        try:
+            df = pd.read_csv(rev_csv, sep = ';', decimal = ',')
+            processed_filenames = df['filename'].values
+            print('Reading processed images from {}...'.format(rev_csv))
+        except:
+            df = pd.DataFrame()
+            processed_filenames = []
+
+        #%%
+        processed_filenames = []
+        print(len(processed_filenames))
+        print(len(np.unique(processed_filenames)))
 
 
-    rmin = 2
-    vmin = 0.8
-    
-    pred_dir = img_dir + '_prediction'
-    if not os.path.isdir(pred_dir):
-        os.makedirs(pred_dir)
-            
-    # Running next element in our graph will produce a batch of images
-    N_batchs = int(N_files/batch_size)
-    for next_element in val_ds:
 
-        batch_of_imgs,batch_of_fnames = next_element
-        predicted_labels = model.predict(batch_of_imgs)
-    
-        for l in range(batch_size):
-    
-            # initialize empty list for cells
-            cells = name_cells(predicted_labels[l,:,:,0])
+        bunch_size = 99
 
-            this_file = decodename(batch_of_fnames[l])
+        all_files = [f for f in os.listdir(img_dir) if f.endswith('overlap.png') and f not in processed_filenames]
+        N_all_files = len(all_files)
+        Nbunchs = int(N_all_files/bunch_size)
 
-            status = []
+        for nb in range(Nbunchs):
 
-            # Go and check only if there are cells            
-            if len(cells) > 0:
-                                
-                plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status, this_file)
-                
+            fnames = all_files[nb*bunch_size:(nb+1)*bunch_size]
+            val_filenames = [os.path.join(img_dir, f) for f in fnames]
+            batch_size = 3
+
+            img_shape = [256,256]
+
+            val_cfg = {
+                'resize': [img_shape[0], img_shape[1]],
+                'scale': 1 / 255. ,
+            }
+            val_preprocessing_fn = functools.partial(_augment, **val_cfg)
+
+            N_files = len(val_filenames)
+            print('Loading a dataset of {} files...'.format(N_files))
+        #
+            #%%
+            val_ds = get_baseline_dataset(val_filenames,
+                                           preproc_fn=val_preprocessing_fn,
+                                           batch_size=batch_size,
+                                           shuffle=False)
+
+            rmin = 2
+            vmin = 0.8
+
+            pred_dir = img_dir + '_prediction'
+            if not os.path.isdir(pred_dir):
+                os.makedirs(pred_dir)
+
+            # Running next element in our graph will produce a batch of images
+            N_batchs = int(N_files/batch_size)
+            stop = False
+            first_file = fnames[0]
+            for i,next_element in enumerate(val_ds):
+
+                batch_of_imgs,batch_of_fnames = next_element
+                predicted_labels = model.predict(batch_of_imgs)
+
+                for l in range(batch_size):
+
+                    status = []
+                    this_file = decodename(batch_of_fnames[l])
+                    if (this_file == first_file) & (i > 0):
+                        status.append('q')
+                        break
+
+                    # initialize empty list for cells
+                    cells = name_cells(predicted_labels[l,:,:,0])
+
+                    if len(cells) > 0:
+                        # add inout ratio
+                        cells = compute_cell_contrast(batch_of_imgs[l], cells, outf=2)
+
+        #                plot_empty_vs_ml(batch_of_imgs[l],predicted_labels[l,:,:,0],cells, status, this_file)
+                        status.append('enter')
+                        mask_fout = os.path.join(pred_dir,this_file.replace('.png','_mask.png'))
+
+                        if status[0] == 'q':
+                            break
+                        #%
+                    else:
+                        status.append('e')
+                        mask_fout = os.path.join(pred_dir,this_file.replace('.png','_mask_[empty].png'))
+
+                    if export_masks:
+                        lab_tile = predicted_labels[l,:,:,0] * 255.  # Essential to save the mask in binary way
+                        cv2.imwrite(mask_fout, lab_tile)
+
+
+                    this_df = (pd
+                           .DataFrame(process_cells(cells), columns = ['index','x','y','r','eccentricity','contrast'])
+                           .assign(filename=this_file)
+                           .assign(slice_number=N_slice)
+                           .assign(exit_status=status[0])
+                           .assign(user=user)
+                           .assign(date=pd.Timestamp.now())
+                           )
+                    this_df.to_csv(os.path.join(rev_path_sl,this_file.replace('png','csv')),
+                                                sep = ';', decimal = ',', index = False)
+
+                    df = df.append(this_df, ignore_index = True)
+
+                    df.to_csv(rev_csv, sep = ';', decimal = ',', index = False)
+
                 if status[0] == 'q':
                     break
-                #%
-            else:
-                status.append('e')
+            print('Bunch {} done, {} to go'.format(nb,Nbunchs-nb))
+        print('Done!')
 
-
-            this_df = (pd
-                       .DataFrame(process_cells(cells), columns = ['index','x','y','r'])
-                       .assign(filename=this_file)
-                       .assign(slice_number=N_slice)
-                       .assign(exit_status=status[0])
-                       .assign(user=user)
-                       .assign(date=pd.Timestamp.now())
-                       )
-            this_df.to_csv(os.path.join(rev_path_sl,this_file.replace('png','csv')),
-                                        sep = ';', decimal = ',', index = False) 
-            
-            df = df.append(this_df, ignore_index = True)
-            
-            df.to_csv(rev_csv, sep = ';', decimal = ',', index = False)                 
-        
-        if status[0] == 'q':
-            break
-    
-    print('Thanks for helping!')
-            
-            
