@@ -1,6 +1,11 @@
 # C-FOS Cell Segmentation with Deep Learning
 
+This software suite uses deep learnig alghoritms from tensorflow to perform cell segmentation.
+
+
 ![Cells count](https://github.com/ldeangelisphys/segmentcells/blob/master/examples/out.gif)
+
+The specific method used is a tensorflow implementation of the U-net alghorithm described in this [arXiv paper](https://arxiv.org/abs/1505.04597 behind). We tested the tool on a dataset consisting of c-fos fluorescence microscopy images. With additional training the method can be applied to other types of microscopy images.
 
 ## Visualize the training
 
