@@ -1,6 +1,6 @@
 # C-FOS Cell Segmentation with Deep Learning
 
-![Cells count](/data01/lorenzo/PROJECTS/cell_segmentation/datasets/2019_11_25/full_slices_cellscount/out.gif){:height="512"}
+![Cells count](https://github.com/ldeangelisphys/segmentcells/blob/master/examples/out.gif){:height="512"}
 
 ## Visualize the training
 
@@ -25,9 +25,7 @@ on its center and release the click on its closest edge.
 After completing the review you can save and end the session by pressing one
 of these buttons:
 
-
-
-|               |     |
+| Button        | Meaning    |
 | :--           | :-- |
 | E or Escape   | If the image was completely **empty** (black) |
 | P or Space    |  If the segmentation was **perfect** and you did not need any correction |
