@@ -7,6 +7,17 @@ This software suite uses deep learnig alghoritms from tensorflow to perform cell
 
 The specific method used is a tensorflow implementation of the U-net alghorithm described in this [arXiv paper](https://arxiv.org/abs/1505.04597). We tested the tool on a dataset consisting of c-fos fluorescence microscopy images. With additional training the method can be applied to other types of microscopy images.
 
+## Train
+
+Setting up the training requires several preprocessing steps. After these are done the training itself is not a big deal
+as it is performed by tensorflow. To make sure that every step is performed correctly it can be usefult to have this
+software as a Jupyter notebook.
+
+The notebook *train.ipynb* contains the needed preprocessing steps as well as a few visualizations to check that everything
+is going as expected. Additionally it contains some basic features for data augmentation. Finally it contains the training
+itself, as well as a simple visualization of its efficiency.
+
+
 ## Visualize the training
 
 To launch the software type
@@ -39,3 +50,10 @@ of these buttons:
 | Enter         |  When you applied **modfications** to the image and you want to confirm |
 | S or B        | If the image is **bad** for training (not easy to solve manually) |
 | O             |  For something **else** |
+
+## Examples folder
+
+The examples folder contains a pretrained network, trained on manually segmented images like the ones in /exmaples/slice_0016_tiled_masks. Moreover, there are sample images (slice_0016_tiled) and their segmentation (slice_0016_tiled_masks), so that one can try the different features of the software. Note that those images alone are not sufficient to perform a satisfactory training.
+
+
+
